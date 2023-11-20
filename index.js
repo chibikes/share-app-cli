@@ -2,6 +2,7 @@ const fs = require("fs");
 const fsp = fs.promises;
 const path = require("path");
 const process = require("process");
+const { exec } = require("child_process");
 const { authenticate } = require("@google-cloud/local-auth");
 const { google } = require("googleapis");
 
@@ -12,6 +13,11 @@ const SCOPES = ["https://www.googleapis.com/auth/drive"];
 // time.
 const TOKEN_PATH = path.join(process.cwd(), "token.json");
 const CREDENTIALS_PATH = path.join(process.cwd(), "credentials.json");
+
+// Run the first command: "flutter run --release"
+const flutterRunCommand = "flutter run --release";
+const flutterProcess = exec(flutterRunCommand);
+const apkFilePath = "build\\app\\outputs\\flutter-apk\\app-release.apk";
 
 /**
  * Reads previously authorized credentials from the save file.
@@ -88,24 +94,114 @@ async function listFiles(authClient) {
   });
 }
 
-async function updateAPK(authClient) {
+async function uploadApp(authClient) {
+  console.log("Uploading APK file...");
   const drive = google.drive({ version: "v3", auth: authClient });
-  const apkContent = fs.createReadStream("app-release.apk");
+  const apkContent = fs.createReadStream(apkFilePath);
+
+  const folderName = "shared-app";
+  const folderId = await findOrCreateFolder(drive, folderName);
+
+  // Check if the "androidapp.apk" file exists in the folder
+  const existingFileId = await findFileInFolder(
+    drive,
+    folderId,
+    "androidapp.apk"
+  );
 
   const fileMetadata = {
     name: "androidapp.apk", // Change the file name as needed
     mimeType: "application/vnd.android.package-archive",
+    parents: [folderId],
   };
 
-  const res = await drive.files.create({
-    requestBody: fileMetadata,
-    media: {
-      mimeType: "application/vnd.android.package-archive",
-      body: apkContent,
-    },
-  });
-
-  console.log("APK file uploaded with ID:", res.data.id);
+  if (existingFileId) {
+    // File exists, update it
+    await drive.files.update({
+      fileId: existingFileId,
+      media: {
+        mimeType: "application/vnd.android.package-archive",
+        body: apkContent,
+      },
+    });
+    console.log("APK file updated with ID:", existingFileId);
+  } else {
+    // File doesn't exist, create it
+    const res = await drive.files.create({
+      requestBody: fileMetadata,
+      media: {
+        mimeType: "application/vnd.android.package-archive",
+        body: apkContent,
+      },
+    });
+    console.log("APK file created with ID:", res.data.id);
+  }
 }
 
-authorize().then(updateAPK).catch(console.error);
+async function findOrCreateFolder(drive, folderName) {
+  const query = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+
+  const res = await drive.files.list({
+    q: query,
+    spaces: "drive",
+    fields: "files(id, name)",
+  });
+
+  const folders = res.data.files;
+
+  if (folders.length > 0) {
+    // Folder exists, return its id
+    return folders[0].id;
+  } else {
+    // Folder doesn't exist, create it and return the id
+    const folderMetadata = {
+      name: folderName,
+      mimeType: "application/vnd.google-apps.folder",
+    };
+
+    const folderRes = await drive.files.create({
+      requestBody: folderMetadata,
+      fields: "id",
+    });
+
+    return folderRes.data.id;
+  }
+}
+
+async function findFileInFolder(drive, folderId, fileName) {
+  const query = `'${folderId}' in parents and name='${fileName}' and trashed=false`;
+
+  const res = await drive.files.list({
+    q: query,
+    spaces: "drive",
+    fields: "files(id, name)",
+  });
+
+  const files = res.data.files;
+
+  if (files.length > 0) {
+    // File with the specified name exists in the folder, return its id
+    return files[0].id;
+  } else {
+    // File doesn't exist in the folder
+    return null;
+  }
+}
+
+flutterProcess.stdout.on("data", (data) => {
+  // Output from the "flutter run --release" command
+  if (data.includes("Built") && fs.existsSync(apkFilePath)) {
+    console.log(`APK file found at ${apkFilePath}`);
+    authorize().then(uploadApp).catch(console.error);
+  }
+  console.log(`stdout: ${data}`);
+});
+
+flutterProcess.stderr.on("data", (data) => {
+  // Error output from the "flutter run --release" command
+  console.error(`stderr: ${data}`);
+});
+
+flutterProcess.on("close", (code) => {
+  console.log(`exited with code ${code}`);
+});
