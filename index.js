@@ -128,6 +128,7 @@ async function uploadApp(authClient) {
         mimeType: "application/vnd.android.package-archive",
         body: apkContent,
       },
+      fields: "id, webContentLink",
     });
     console.log("APK file updated with ID:", existingFileId);
   } else {
@@ -138,6 +139,8 @@ async function uploadApp(authClient) {
         mimeType: "application/vnd.android.package-archive",
         body: apkContent,
       },
+      supportsAllDrives: true,
+      fields: "id, webContentLink",
     });
     console.log("APK file created with ID:", res.data.id);
   }
