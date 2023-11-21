@@ -11,13 +11,16 @@ const SCOPES = ["https://www.googleapis.com/auth/drive"];
 // The file token.json stores the user's access and refresh tokens, and is
 // created automatically when the authorization flow completes for the first
 // time.
-const TOKEN_PATH = path.join(process.cwd(), "token.json");
-const CREDENTIALS_PATH = path.join(process.cwd(), "credentials.json");
+const TOKEN_PATH = path.join(__dirname, "token.json");
+const CREDENTIALS_PATH = path.join(__dirname, "credentials.json");
 
 // Run the first command: "flutter run --release"
 const flutterRunCommand = "flutter run --release";
 const flutterProcess = exec(flutterRunCommand);
-const apkFilePath = "build\\app\\outputs\\flutter-apk\\app-release.apk";
+const apkFilePath = path.join(
+  process.cwd(),
+  "build/app/outputs/flutter-apk/app-release.apk"
+);
 
 /**
  * Reads previously authorized credentials from the save file.
@@ -115,9 +118,11 @@ async function uploadApp(authClient) {
     parents: [folderId],
   };
 
+  let res = null;
+
   if (existingFileId) {
     // File exists, update it
-    await drive.files.update({
+    res = await drive.files.update({
       fileId: existingFileId,
       media: {
         mimeType: "application/vnd.android.package-archive",
@@ -127,7 +132,7 @@ async function uploadApp(authClient) {
     console.log("APK file updated with ID:", existingFileId);
   } else {
     // File doesn't exist, create it
-    const res = await drive.files.create({
+    res = await drive.files.create({
       requestBody: fileMetadata,
       media: {
         mimeType: "application/vnd.android.package-archive",
@@ -136,6 +141,8 @@ async function uploadApp(authClient) {
     });
     console.log("APK file created with ID:", res.data.id);
   }
+
+  console.log("Web Content Link:", res.data.webContentLink);
 }
 
 async function findOrCreateFolder(drive, folderName) {
