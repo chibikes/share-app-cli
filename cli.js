@@ -8,6 +8,7 @@ const { authenticate } = require("@google-cloud/local-auth");
 const { google } = require("googleapis");
 const yargs = require("yargs");
 const axios = require("axios");
+const yaml = require("yaml");
 
 // If modifying these scopes, delete token.json.
 const SCOPES = ["https://www.googleapis.com/auth/drive"];
@@ -106,15 +107,17 @@ async function uploadApp(authClient) {
   const folderName = "shared-app";
   const folderId = await findOrCreateFolder(drive, folderName);
 
+  // Obtain the app name from pubspec.yaml
+  const appName = await getAppName();
+
+  // Construct the APK file name using the app name
+  const apkFileName = `${appName}.apk`;
+
   // Check if the "androidapp.apk" file exists in the folder
-  const existingFileId = await findFileInFolder(
-    drive,
-    folderId,
-    "androidapp.apk"
-  );
+  const existingFileId = await findFileInFolder(drive, folderId, apkFileName);
 
   const fileMetadata = {
-    name: "androidapp.apk", // Change the file name as needed
+    name: apkFileName, // Change the file name as needed
     mimeType: "application/vnd.android.package-archive",
     parents: [folderId],
   };
@@ -146,7 +149,7 @@ async function uploadApp(authClient) {
     console.log("APK file created with ID:", res.data.id);
   }
 
-  console.log("Web Content Link:", res.data.webContentLink);
+  console.log("Google Drive Link:", res.data.webContentLink);
 }
 
 async function findOrCreateFolder(drive, folderName) {
@@ -179,6 +182,26 @@ async function findOrCreateFolder(drive, folderName) {
   }
 }
 
+async function getAppName() {
+  try {
+    const pubspecPath = path.join(process.cwd(), "pubspec.yaml");
+    const pubspecContent = await fsp.readFile(pubspecPath, "utf-8");
+    const pubspec = yaml.parse(pubspecContent);
+
+    // If the 'name' field is defined in pubspec.yaml, use it
+    if (pubspec.name) {
+      return pubspec.name;
+    }
+
+    // If 'name' is not defined, use the name of the root folder
+    const rootFolderName = path.basename(process.cwd());
+    return rootFolderName;
+  } catch (error) {
+    console.error("Error reading pubspec.yaml:", error.message);
+    throw error;
+  }
+}
+
 async function findFileInFolder(drive, folderId, fileName) {
   const query = `'${folderId}' in parents and name='${fileName}' and trashed=false`;
 
@@ -207,7 +230,6 @@ async function downloadCredentials() {
   try {
     const response = await axios.get(credentialsUrl, { responseType: "json" });
     await fsp.writeFile(localCredentialsPath, JSON.stringify(response.data));
-    console.log("Credentials downloaded successfully.");
   } catch (error) {
     console.error("Error downloading credentials:", error.message);
     throw error;
@@ -224,7 +246,6 @@ yargs.command({
 
     // Run the flutter run command with additional arguments
     const flutterRunCommand = `flutter run --release ${flutterRunArgs}`;
-    console.log(argv);
     console.log(`command is::::::::::${flutterRunCommand}`);
     const flutterProcess = exec(flutterRunCommand);
     // Run the flutter run command

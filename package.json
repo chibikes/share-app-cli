@@ -3,6 +3,7 @@
     "@google-cloud/local-auth": "^2.1.0",
     "axios": "^1.6.2",
     "googleapis": "^105.0.0",
+    "yaml": "^2.3.4",
     "yargs": "^17.7.2"
   },
   "name": "fards-share-app",
@@ -10,7 +11,7 @@
     "fards-share-app": "cli.js"
   },
   "description": "Share applications easily",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "main": "cli.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
